@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using MCPForUnity.Editor.Constants;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Services.Transport;
 using UnityEditor;
@@ -52,18 +53,24 @@ namespace MCPForUnity.Editor.Services
                 McpLog.Warn($"Shutdown cleanup: failed to stop transports: {ex.Message}");
             }
 
-            // 2) Stop the local HTTP server this Unity instance launched (best-effort).
-            // Headless servers have no terminal window, so an unstopped one is an invisible orphan.
-            // StopManagedLocalHttpServer only stops the server matching our pidfile+instance-token handshake,
-            // so it never touches servers launched by other Unity instances. This runs on quit only;
-            // domain reloads must NOT stop the server (and don't — this handler is gated on EditorApplication.quitting).
-            try
+            // 2) Stop the local HTTP server this Unity instance launched (best-effort), unless
+            // the user explicitly chose to keep it running after Unity closes. This is independent
+            // of transport shutdown above, and runs on quit only; domain reloads never reach here.
+            bool keepServerOnQuit = EditorPrefs.GetBool(EditorPrefKeys.KeepServerOnQuit, false);
+            if (keepServerOnQuit == false)
             {
-                MCPServiceLocator.Server.StopManagedLocalHttpServer();
+                try
+                {
+                    MCPServiceLocator.Server.StopManagedLocalHttpServer();
+                }
+                catch (Exception ex)
+                {
+                    McpLog.Warn($"Shutdown cleanup: failed to stop local HTTP server: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            else
             {
-                McpLog.Warn($"Shutdown cleanup: failed to stop local HTTP server: {ex.Message}");
+                McpLog.Info("Shutdown cleanup: keeping managed local HTTP server running because 'Keep Server Running After Unity Closes' is enabled.");
             }
         }
     }

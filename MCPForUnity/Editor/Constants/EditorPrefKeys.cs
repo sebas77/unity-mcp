@@ -32,6 +32,8 @@ namespace MCPForUnity.Editor.Constants
         internal const string ProjectScopedToolsLocalHttp = "MCPForUnity.ProjectScopedTools.LocalHttp";
         internal const string AllowLanHttpBind = "MCPForUnity.Security.AllowLanHttpBind";
         internal const string AllowInsecureRemoteHttp = "MCPForUnity.Security.AllowInsecureRemoteHttp";
+        internal const string KeepServerOnQuit = "MCPForUnity.KeepServerOnQuit";
+        internal const string LaunchServerInTerminal = "MCPForUnity.LocalHttpServer.LaunchInTerminal";
 
         internal const string PackageDeploySourcePath = "MCPForUnity.PackageDeploy.SourcePath";
         internal const string PackageDeployLastBackupPath = "MCPForUnity.PackageDeploy.LastBackupPath";

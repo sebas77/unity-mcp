@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using MCPForUnity.Editor.Constants;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Services.Server;
@@ -232,23 +233,32 @@ namespace MCPForUnity.Editor.Services
         }
 
         /// <summary>
-        /// Start the local HTTP server headless (no terminal window), redirecting its
-        /// stdout/stderr to Library/MCPForUnity/Logs/server-launch-{port}.log.
+        /// Start the local HTTP server. When terminal launch is disabled, stdout/stderr is
+        /// redirected to Library/MCPForUnity/Logs/server-launch-{port}.log.
         /// Stops any existing server on the port and clears stale build artifacts first.
         /// </summary>
         public bool StartLocalHttpServer(bool quiet = false)
+        {
+            return StartLocalHttpServerInternal(quiet);
+        }
+
+        private bool StartLocalHttpServerInternal(bool silent)
         {
             /// Clean stale Python build artifacts when using a local dev server path
             AssetPathUtility.CleanLocalServerBuildArtifacts();
 
             if (!TryGetLocalHttpServerCommandParts(out _, out _, out var displayCommand, out var error))
             {
-                if (!quiet)
+                if (silent == false)
                 {
                     EditorUtility.DisplayDialog(
                         "Cannot Start HTTP Server",
                         error ?? "The server command could not be constructed with the current settings.",
                         "OK");
+                }
+                else
+                {
+                    McpLog.Warn(error ?? "The server command could not be constructed with the current settings.");
                 }
                 return false;
             }
@@ -265,7 +275,7 @@ namespace MCPForUnity.Editor.Services
                     var remaining = GetListeningProcessIdsForPort(uri.Port);
                     if (remaining.Count > 0)
                     {
-                        if (!quiet)
+                        if (silent == false)
                         {
                             EditorUtility.DisplayDialog(
                                 "Port In Use",
@@ -273,6 +283,11 @@ namespace MCPForUnity.Editor.Services
                                 $"{string.Join(", ", remaining)}\n\n" +
                                 $"{ProductInfo.ProductName} will not terminate unrelated processes. Stop the owning process manually or change the HTTP URL.",
                                 "OK");
+                        }
+                        else
+                        {
+                            McpLog.Warn(
+                                $"Cannot start the local HTTP server because port {uri.Port} is already in use by PID(s): {string.Join(", ", remaining)}");
                         }
                         return false;
                     }
@@ -295,14 +310,19 @@ namespace MCPForUnity.Editor.Services
                 launchCommand = $"{displayCommand} --pidfile {QuoteIfNeeded(pidFilePath)} --unity-instance-token {instanceToken}";
             }
 
+            bool launchInTerminal = EditorPrefs.GetBool(EditorPrefKeys.LaunchServerInTerminal, false);
+
             // First-time-only confirmation. Subsequent launches (and the quiet auto-start path) skip the dialog.
-            if (!quiet && !EditorPrefs.GetBool(EditorPrefKeys.HttpServerLaunchConfirmed, false))
+            if (silent == false && !EditorPrefs.GetBool(EditorPrefKeys.HttpServerLaunchConfirmed, false))
             {
+                string launchModeDescription = launchInTerminal
+                    ? "It launches in a visible terminal window so you can watch server output in real time."
+                    : "It launches headless (no terminal window) and logs progress to the Unity Console.";
                 if (!EditorUtility.DisplayDialog(
                     "Start Local HTTP Server",
-                    "Start the local MCP server in the background?\n\n" +
-                    "It launches headless (no terminal window) and logs progress to the Unity Console. " +
-                    "This confirmation is shown only once.",
+                    "Start the local MCP server?\n\n" +
+                    launchModeDescription +
+                    " This confirmation is shown only once.",
                     "Start",
                     "Cancel"))
                 {
@@ -329,34 +349,44 @@ namespace MCPForUnity.Editor.Services
                 }
                 catch { }
 
-                // Truncate the launch log so the tail always reflects the current launch.
-                if (!string.IsNullOrEmpty(launchLog))
-                {
-                    try
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(launchLog));
-                        File.WriteAllText(launchLog, string.Empty);
-                    }
-                    catch { }
-                }
-
                 McpLog.Info("Starting local HTTP server… (first run may take a minute while dependencies install)");
 
-                // Launch the server headless (no terminal window); stdout+stderr go to the launch log.
-                string effectiveLog = launchLog ?? Path.Combine(Path.GetTempPath(), "mcp-for-unity-server-launch.log");
-                var startInfo = CreateHeadlessProcessStartInfo(launchCommand, effectiveLog);
-
-                // The headless shell is not a login shell, so it does not inherit the user's
-                // profile PATH (on macOS, GUI-launched Unity has a minimal PATH). Prepend the
-                // platform uv/uvx locations so a bare `uvx`/`uv` resolves the same way the old
-                // terminal (login shell) launch did.
-                string extraPathPrepend = GetPlatformSpecificPathPrepend();
-                if (!string.IsNullOrEmpty(extraPathPrepend))
+                System.Diagnostics.ProcessStartInfo startInfo;
+                if (launchInTerminal)
                 {
-                    string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-                    startInfo.EnvironmentVariables["PATH"] = string.IsNullOrEmpty(currentPath)
-                        ? extraPathPrepend
-                        : (extraPathPrepend + Path.PathSeparator + currentPath);
+                    // Visible terminal launch: the terminal inherits the user's shell environment,
+                    // so we do not prepend PATH. Server output is shown in the terminal.
+                    startInfo = CreateTerminalProcessStartInfo(launchCommand);
+                }
+                else
+                {
+                    // Truncate the launch log so the tail always reflects the current launch.
+                    if (!string.IsNullOrEmpty(launchLog))
+                    {
+                        try
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(launchLog));
+                            File.WriteAllText(launchLog, string.Empty);
+                        }
+                        catch { }
+                    }
+
+                    // Launch the server headless (no terminal window); stdout+stderr go to the launch log.
+                    string effectiveLog = launchLog ?? Path.Combine(Path.GetTempPath(), "mcp-for-unity-server-launch.log");
+                    startInfo = CreateHeadlessProcessStartInfo(launchCommand, effectiveLog);
+
+                    // The headless shell is not a login shell, so it does not inherit the user's
+                    // profile PATH (on macOS, GUI-launched Unity has a minimal PATH). Prepend the
+                    // platform uv/uvx locations so a bare `uvx`/`uv` resolves the same way the old
+                    // terminal (login shell) launch did.
+                    string extraPathPrepend = GetPlatformSpecificPathPrepend();
+                    if (!string.IsNullOrEmpty(extraPathPrepend))
+                    {
+                        string currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                        startInfo.EnvironmentVariables["PATH"] = string.IsNullOrEmpty(currentPath)
+                            ? extraPathPrepend
+                            : (extraPathPrepend + Path.PathSeparator + currentPath);
+                    }
                 }
 
                 _lastLaunchedProcess = System.Diagnostics.Process.Start(startInfo);
@@ -369,7 +399,7 @@ namespace MCPForUnity.Editor.Services
             catch (Exception ex)
             {
                 McpLog.Error($"Failed to start server: {ex.Message}");
-                if (!quiet)
+                if (silent == false)
                 {
                     EditorUtility.DisplayDialog(
                         "Error",
@@ -521,13 +551,41 @@ namespace MCPForUnity.Editor.Services
 
                     try
                     {
-                        using (var client = new TcpClient())
+                        var client = new TcpClient();
+                        try
                         {
                             var connectTask = client.ConnectAsync(target, port);
                             if (connectTask.Wait(remainingMs) && client.Connected)
                             {
-                                return true;
+                                if (client.Connected)
+                                {
+                                    return true;
+                                }
                             }
+                            else
+                            {
+                                connectTask.ContinueWith(
+                                    task =>
+                                    {
+                                        try
+                                        {
+                                            _ = task.Exception;
+                                        }
+                                        catch
+                                        {
+                                        }
+                                        finally
+                                        {
+                                            client.Dispose();
+                                        }
+                                    },
+                                    TaskScheduler.Default);
+                                client = null;
+                            }
+                        }
+                        finally
+                        {
+                            client?.Dispose();
                         }
                     }
                     catch
@@ -1021,6 +1079,13 @@ namespace MCPForUnity.Editor.Services
         {
             try
             {
+                // The visible-terminal launcher is a short-lived stub (Terminal.app/cmd start/etc.)
+                // that exits after handing the server over to the shell. In that mode we cannot rely
+                // on _lastLaunchedProcess still being alive; report alive so startup wait loops keep
+                // polling reachability until the server actually starts or the hard timeout hits.
+                if (EditorPrefs.GetBool(EditorPrefKeys.LaunchServerInTerminal, false))
+                    return true;
+
                 var proc = _lastLaunchedProcess;
                 return proc != null && !proc.HasExited;
             }

@@ -25,6 +25,8 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
         private Button browseGitUrlButton;
         private Button clearGitUrlButton;
         private Toggle autoStartOnLoadToggle;
+        private Toggle keepServerOnQuitToggle;
+        private Toggle launchInTerminalToggle;
         private Toggle debugLogsToggle;
         private Toggle logRecordToggle;
         private Toggle devModeForceRefreshToggle;
@@ -71,6 +73,8 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
             browseGitUrlButton = Root.Q<Button>("browse-git-url-button");
             clearGitUrlButton = Root.Q<Button>("clear-git-url-button");
             autoStartOnLoadToggle = Root.Q<Toggle>("auto-start-on-load-toggle");
+            keepServerOnQuitToggle = Root.Q<Toggle>("keep-server-on-quit-toggle");
+            launchInTerminalToggle = Root.Q<Toggle>("launch-in-terminal-toggle");
             debugLogsToggle = Root.Q<Toggle>("debug-logs-toggle");
             logRecordToggle = Root.Q<Toggle>("log-record-toggle");
             devModeForceRefreshToggle = Root.Q<Toggle>("dev-mode-force-refresh-toggle");
@@ -134,6 +138,22 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
                 if (insecureRemoteLabel != null)
                     insecureRemoteLabel.tooltip = allowInsecureRemoteHttpToggle.tooltip;
             }
+            if (keepServerOnQuitToggle != null)
+            {
+                keepServerOnQuitToggle.tooltip = "Keep the locally managed HTTP MCP server process running after Unity Editor closes. Manual Stop Server still stops the server.";
+                var keepServerOnQuitLabel = keepServerOnQuitToggle.parent?.Q<Label>();
+                if (keepServerOnQuitLabel != null)
+                    keepServerOnQuitLabel.tooltip = keepServerOnQuitToggle.tooltip;
+                keepServerOnQuitToggle.SetValueWithoutNotify(EditorPrefs.GetBool(EditorPrefKeys.KeepServerOnQuit, false));
+            }
+            if (launchInTerminalToggle != null)
+            {
+                launchInTerminalToggle.tooltip = "Launch the local HTTP MCP server in a visible terminal window. Terminal output is shown in real time; when disabled the server runs headless and writes output to the launch log file.";
+                var launchInTerminalLabel = launchInTerminalToggle.parent?.Q<Label>();
+                if (launchInTerminalLabel != null)
+                    launchInTerminalLabel.tooltip = launchInTerminalToggle.tooltip;
+                launchInTerminalToggle.SetValueWithoutNotify(EditorPrefs.GetBool(EditorPrefKeys.LaunchServerInTerminal, false));
+            }
             if (testConnectionButton != null)
                 testConnectionButton.tooltip = "Test the connection between Unity and the MCP server.";
             if (screenshotsFolderOverride != null)
@@ -195,6 +215,14 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
             {
                 allowInsecureRemoteHttpToggle.SetValueWithoutNotify(EditorPrefs.GetBool(EditorPrefKeys.AllowInsecureRemoteHttp, false));
             }
+            if (keepServerOnQuitToggle != null)
+            {
+                keepServerOnQuitToggle.SetValueWithoutNotify(EditorPrefs.GetBool(EditorPrefKeys.KeepServerOnQuit, false));
+            }
+            if (launchInTerminalToggle != null)
+            {
+                launchInTerminalToggle.SetValueWithoutNotify(EditorPrefs.GetBool(EditorPrefKeys.LaunchServerInTerminal, false));
+            }
             UpdatePathOverrides();
             UpdateDeploymentSection();
         }
@@ -252,6 +280,22 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
                 autoStartOnLoadToggle.RegisterValueChangedCallback(evt =>
                 {
                     EditorPrefs.SetBool(EditorPrefKeys.AutoStartOnLoad, evt.newValue);
+                });
+            }
+
+            if (keepServerOnQuitToggle != null)
+            {
+                keepServerOnQuitToggle.RegisterValueChangedCallback(evt =>
+                {
+                    EditorPrefs.SetBool(EditorPrefKeys.KeepServerOnQuit, evt.newValue);
+                });
+            }
+
+            if (launchInTerminalToggle != null)
+            {
+                launchInTerminalToggle.RegisterValueChangedCallback(evt =>
+                {
+                    EditorPrefs.SetBool(EditorPrefKeys.LaunchServerInTerminal, evt.newValue);
                 });
             }
 
@@ -412,6 +456,14 @@ namespace MCPForUnity.Editor.Windows.Components.Advanced
             if (allowInsecureRemoteHttpToggle != null)
             {
                 allowInsecureRemoteHttpToggle.value = EditorPrefs.GetBool(EditorPrefKeys.AllowInsecureRemoteHttp, false);
+            }
+            if (keepServerOnQuitToggle != null)
+            {
+                keepServerOnQuitToggle.value = EditorPrefs.GetBool(EditorPrefKeys.KeepServerOnQuit, false);
+            }
+            if (launchInTerminalToggle != null)
+            {
+                launchInTerminalToggle.value = EditorPrefs.GetBool(EditorPrefKeys.LaunchServerInTerminal, false);
             }
             UpdateDeploymentSection();
         }
